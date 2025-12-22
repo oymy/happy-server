@@ -137,14 +137,11 @@ export function voiceRoutes(app: Fastify) {
         const elevenLabsData = await response.json() as any;
         const elevenLabsToken = elevenLabsData.token;
 
-        // Increment voice conversation count (only if using free trial)
-        if (hasFreeTrial) {
-            await db.account.update({
-                where: { id: userId },
-                data: { voiceConversationCount: { increment: 1 } }
-            });
-            log({ module: 'voice' }, `Incremented voice count for user ${userId} to ${count + 1}/${limit}`);
-        }
+        // Increment voice conversation count
+        await db.account.update({
+            where: { id: userId },
+            data: { voiceConversationCount: { increment: 1 } }
+        });
 
         log({ module: 'voice' }, `Voice token issued for user ${userId}`);
         return reply.send({
