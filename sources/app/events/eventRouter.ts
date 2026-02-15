@@ -210,15 +210,32 @@ class EventRouter {
             this.userConnections.set(userId, new Set());
         }
         this.userConnections.get(userId)!.add(connection);
+        
+        let connDetails = '';
+        if (connection.connectionType === 'session-scoped') {
+            connDetails = `sessionId=${connection.sessionId}`;
+        } else if (connection.connectionType === 'machine-scoped') {
+            connDetails = `machineId=${connection.machineId}`;
+        }
+        log({ module: 'websocket' }, `Connection added: userId=${userId}, type=${connection.connectionType}${connDetails ? ', ' + connDetails : ''}, totalConnections=${this.userConnections.get(userId)!.size}`);
     }
 
     removeConnection(userId: string, connection: ClientConnection): void {
         const connections = this.userConnections.get(userId);
         if (connections) {
             connections.delete(connection);
-            if (connections.size === 0) {
+            const remainingSize = connections.size;
+            if (remainingSize === 0) {
                 this.userConnections.delete(userId);
             }
+            
+            let connDetails = '';
+            if (connection.connectionType === 'session-scoped') {
+                connDetails = `sessionId=${connection.sessionId}`;
+            } else if (connection.connectionType === 'machine-scoped') {
+                connDetails = `machineId=${connection.machineId}`;
+            }
+            log({ module: 'websocket' }, `Connection removed: userId=${userId}, type=${connection.connectionType}${connDetails ? ', ' + connDetails : ''}, remainingConnections=${remainingSize}`);
         }
     }
 
@@ -312,18 +329,30 @@ class EventRouter {
             return;
         }
 
+        const payloadType = params.payload?.body?.t || params.payload?.type || 'unknown';
+        let sentCount = 0;
+        let skippedCount = 0;
+        let filteredCount = 0;
+
         for (const connection of connections) {
             // Skip message echo
             if (params.skipSenderConnection && connection === params.skipSenderConnection) {
+                skippedCount++;
                 continue;
             }
 
             // Apply recipient filter
             if (!this.shouldSendToConnection(connection, params.recipientFilter)) {
+                filteredCount++;
                 continue;
             }
 
             connection.socket.emit(params.eventName, params.payload);
+            sentCount++;
+        }
+
+        if (params.eventName === 'update') {
+            log({ module: 'websocket' }, `Emit ${payloadType}: sent=${sentCount}, skipped=${skippedCount}, filtered=${filteredCount}, totalConnections=${connections.size}, filter=${params.recipientFilter.type}`);
         }
     }
 }
